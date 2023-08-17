@@ -8,15 +8,16 @@
 # /*                                                                     */
 # /*  PROJECT       : GEA3 Tool                                          */
 # /*  IDE           : Visual Studio Code                                 */
-# /*  Python Version: 3.9.13                                             */
+# /*  Python Version: 3.10.11                                             */
 # */                                                                     */
 # /*  Copyright 2012-2023 Mabe TyP                                       */
 # /*  All rights reserved                                                */
 # /*                                                                     */
 # /***********************************************************************/
-
-import ReadorWrite
-import verifylength as vrlen
+from Markdown import Init
+Init()
+from ReadorWrite import ReadErd, WriteErd, Bootloader
+from verifylength import longitudERD
 import serial
 import serial.tools.list_ports
 
@@ -44,45 +45,45 @@ def SetBoard(board):                                                            
 
 # /************************************************************************
 #  Name:          ReadButton( )    
-#  Parameters:    Destination, ERD
-#  Returns:       Frame read
-#  Called by:     LabVIEW
+#  Parameters:    Destination (str), ERD (str)
+#  Returns:       Data read (str)
 #  Calls:         verifylength.longitudERD( )
 #                 ReadorWrite.ReadErd( )
 #  Description:   Write a frame to read a serial, and return a complete
 #                 frame read until reach bit stop.
 #               
-# ************************************************************************/
-def ReadButton(dst, ERD):                                                           # Función para leer ERD's donde se le pasan los argumentos de Destinatio y ERD
-    complete_frame = ""                                                             # Se inicializa el string vacio
-    longitud_ERD = vrlen.longitudERD(ERD)                                           # Verifica la longitud del ERD y agrega 0s si es menor a 4 si es mayor retorna error
-    if longitud_ERD == "Fallo":                                                     # Si la longitud es mayor a 5 envía Fallo
-        complete_frame = "Longitud de ERD incorrecta"                               # Retorna el mensaje de error.
-    else:
-        lectura = ReadorWrite.ReadErd(longitud_ERD, dst)                            # Completa la trama con el ERD y destination dado por LabVIEW
-        ser.write(lectura)                                                          # Se escribe la trama por serial
+# ************************************************************************/                                         
+def ReadFrame(dst:str, ERD:str) -> str:                                 
+    Erd = longitudERD(ERD).upper()             
+    while True:
+        complete_frame = ""  
+        lectura = ReadErd(Erd, dst)        
+        ser.write(lectura)                                       
         while True:
-            reading = ser.read(1)                                                   # Se lee el primer byte
-            print(reading)
-            concatenate = reading.hex()                                             # Se convierte a hexadecimal la lectura serial
-            complete_frame += concatenate                                           # Se concatena byte por byte
-            print(complete_frame)
-            if reading == b'\xE3':                                                  # Si se lee el bit de Stop
-                break                                                               # Sale del ciclo while
-            if reading == b'':                                                      # Si no lee nada
-                break                                                               # Sale del ciclo while
-        BitInicio = complete_frame[0:2]
-        if BitInicio != "e2":
-            complete_frame = "Error"
-        else:
-            complete_frame = complete_frame[2: ]
-        return complete_frame                                                       # Retorna la trama o mensajes de error.
-    
+            reading = ser.read(1)                 
+            concatenate = reading.hex()                                     
+            complete_frame += concatenate                                        
+            if reading == b'\xE3':                               
+                break                   
+            if reading == b'':   
+                complete_frame = "Verifica conexiones"   
+                break
+        complete_frame = complete_frame.upper()          
+        Byte_ERD = complete_frame[14:18]
+        Byte_OK = complete_frame[12:14]
+        if (Byte_ERD == Erd) and (Byte_OK == "00"):
+            Longitud_Dato_hex = complete_frame[18:20]
+            Longitud_Dato_int = int(Longitud_Dato_hex, 16) * 2
+            Dato = complete_frame[20:(20 + Longitud_Dato_int)]
+            break
+    return Dato                                                       # Retorna la trama o mensajes de error.
+
+SetBoard(1)
+print(ReadFrame("C0", "003a"))
 # /************************************************************************
 #  Name:          WriteButton( )    
 #  Parameters:    Destination, ERD, dato
 #  Returns:       Frame read
-#  Called by:     LabVIEW
 #  Calls:         verifylength.longitudERD( )
 #                 ReadorWrite.WriteErd( )
 #  Description:   Write a frame to write a serial, and read the frame that 
@@ -90,14 +91,14 @@ def ReadButton(dst, ERD):                                                       
 #                 reach bit stop.
 #               
 # ************************************************************************/
-def WriteButton(dst, ERD, dato):                                                    # Función para escirbir al ERD, con argumentos; Destination, ERD y dato 
+def WriteFrame(dst, ERD, dato):                                                     # Función para escirbir al ERD, con argumentos; Destination, ERD y dato 
     complete_frame = ""                                                             # Se inicia el strign de la trama vacío
     dato = dato.replace(" ", "")                                                    # Se eliminan espacios en el argumento dato
-    longitudERD = vrlen.longitudERD(ERD)                                            # Verifica la longitud del ERD y agrega 0s si es menor a 4 si es mayor retorna error
+    longitudERD = longitudERD(ERD)                                                  # Verifica la longitud del ERD y agrega 0s si es menor a 4 si es mayor retorna error
     if longitudERD == "Fallo":                                                      # Si la longitud es mayor a 5 envía Fallo
         complete_frame = "Error"                                                    # Retorna Error
     else:
-        escritura = ReadorWrite.WriteErd(longitudERD, dato, dst)                    # Completa la trama con el ERD, Destination y dato a escribir dado por LabVIEW
+        escritura = WriteErd(longitudERD, dato, dst)                                # Completa la trama con el ERD, Destination y dato a escribir dado por LabVIEW
         ser.write(escritura)                                                        # Se escribe la trama por serial
         while True:
             reading = ser.read(1)                                                   # Se lee el primer byte
@@ -125,12 +126,12 @@ def WriteButton(dst, ERD, dato):                                                
 #                 read until reach bit stop.
 #               
 # ************************************************************************/
-def WriteBoatloader(dst, command, message):                                             # Función para escribir mensajes con lo argumentos Destination, Comando y Mensaje.
+def WriteBootloader(dst, command, message):                                             # Función para escribir mensajes con lo argumentos Destination, Comando y Mensaje.
     CompleteFrame = "" 
     dst = str(dst)
     command = str(command)
     message = str(message)
-    lectura = ReadorWrite.Boatloader(dst, command, message)                             # Concatenación de la trama completa a escribir
+    lectura = Bootloader(dst, command, message)                                         # Concatenación de la trama completa a escribir
     ser.write(lectura)                                                                  # Escribe la trama al puerto serial
     reading = (ser.read()).hex()                                                        # Lee el primer byte de datos y lo convierte a hexadecimal
     if reading != "e2":                                                                 # Si el primer byte no es el byte de inicio
